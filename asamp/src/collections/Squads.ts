@@ -116,13 +116,74 @@ export const Squads: CollectionConfig = {
       relationTo: 'sprints',
       required: false,
     },
+    // === NEW COMPLIANCE RULES ===
+    {
+      name: 'attendanceRules',
+      type: 'group',
+      fields: [
+        {
+          name: 'minimumWorkHours',
+          type: 'number',
+          required: true,
+          defaultValue: 8,
+          admin: {
+            description: 'Minimum required working hours per day',
+            step: 0.5,
+          },
+        },
+        {
+          name: 'standardCheckInTime',
+          type: 'text',
+          required: true,
+          defaultValue: '09:00',
+          admin: {
+            description: 'Standard check-in time (HH:MM format)',
+          },
+        },
+        {
+          name: 'standardCheckOutTime',
+          type: 'text',
+          required: true,
+          defaultValue: '17:00',
+          admin: {
+            description: 'Standard check-out time (HH:MM format)',
+          },
+        },
+        {
+          name: 'lateThresholdMinutes',
+          type: 'number',
+          required: true,
+          defaultValue: 15,
+          admin: {
+            description: 'Minutes late before marking as non-compliant',
+          },
+        },
+        {
+          name: 'earlyCheckoutThresholdMinutes',
+          type: 'number',
+          required: true,
+          defaultValue: 30,
+          admin: {
+            description: 'Minutes early checkout before marking as non-compliant',
+          },
+        },
+        {
+          name: 'flexibleHours',
+          type: 'checkbox',
+          defaultValue: false,
+          admin: {
+            description: 'Allow flexible check-in/out times (focus on total hours only)',
+          },
+        },
+      ],
+    },
     {
       name: 'complianceScore',
       type: 'number',
       required: false,
       admin: {
         readOnly: true,
-        description: 'Calculated weekly, auto-populated',
+        description: 'Calculated weekly compliance score (0-100%)',
       },
     },
     {

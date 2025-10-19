@@ -75,6 +75,7 @@ export interface Config {
     leaveRequests: LeaveRequest;
     auditLogs: AuditLog;
     notifications: Notification;
+    reports: Report;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -89,6 +90,7 @@ export interface Config {
     leaveRequests: LeaveRequestsSelect<false> | LeaveRequestsSelect<true>;
     auditLogs: AuditLogsSelect<false> | AuditLogsSelect<true>;
     notifications: NotificationsSelect<false> | NotificationsSelect<true>;
+    reports: ReportsSelect<false> | ReportsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -171,8 +173,34 @@ export interface Squad {
   timeZone: string;
   workdays?: ('Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday')[] | null;
   activeSprint?: (string | null) | Sprint;
+  attendanceRules: {
+    /**
+     * Minimum required working hours per day
+     */
+    minimumWorkHours: number;
+    /**
+     * Standard check-in time (HH:MM format)
+     */
+    standardCheckInTime: string;
+    /**
+     * Standard check-out time (HH:MM format)
+     */
+    standardCheckOutTime: string;
+    /**
+     * Minutes late before marking as non-compliant
+     */
+    lateThresholdMinutes: number;
+    /**
+     * Minutes early checkout before marking as non-compliant
+     */
+    earlyCheckoutThresholdMinutes: number;
+    /**
+     * Allow flexible check-in/out times (focus on total hours only)
+     */
+    flexibleHours?: boolean | null;
+  };
   /**
-   * Calculated weekly, auto-populated
+   * Calculated weekly compliance score (0-100%)
    */
   complianceScore?: number | null;
   /**
@@ -200,12 +228,7 @@ export interface Sprint {
   startDate: string;
   endDate: string;
   squad: string | Squad;
-  tags?:
-    | {
-        tag?: ('standup' | 'retro' | 'planning' | 'review' | 'refinement' | 'demo') | null;
-        id?: string | null;
-      }[]
-    | null;
+  Tags?: ('standup' | 'retro' | 'planning' | 'demo')[] | null;
   /**
    * External Jira sprint ID for integration
    */
@@ -253,6 +276,28 @@ export interface AttendanceLog {
    */
   location?: string | null;
   workMode: 'remote' | 'office' | 'client-site' | 'ooo';
+  /**
+   * Auto-calculated from check-in/out times
+   */
+  totalHours?: number | null;
+  /**
+   * Auto-calculated compliance status
+   */
+  complianceStatus?:
+    | ('compliant' | 'late-checkin' | 'early-checkout' | 'insufficient-hours' | 'missing-checkout' | 'pending')
+    | null;
+  /**
+   * Auto-generated compliance details
+   */
+  complianceNotes?: string | null;
+  /**
+   * Minutes late for check-in (if applicable)
+   */
+  lateMinutes?: number | null;
+  /**
+   * Minutes early for check-out (if applicable)
+   */
+  earlyCheckoutMinutes?: number | null;
   flags?:
     | {
         flag?: ('partial-day' | 'late' | 'leave' | 'anomaly') | null;
@@ -364,7 +409,7 @@ export interface Notification {
    * Main message content
    */
   message: string;
-  type: 'checkin' | 'leave' | 'reminder' | 'system';
+  type: 'checkin' | 'leave' | 'reminder' | 'report' | 'system';
   /**
    * User who will receive this notification
    */
@@ -397,6 +442,83 @@ export interface Notification {
    * When the notification was created/sent
    */
   sentAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reports".
+ */
+export interface Report {
+  id: string;
+  title: string;
+  reportType: 'daily' | 'weekly' | 'sprint' | 'squad' | 'compliance' | 'custom';
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+  filters?: {
+    squads?: (string | Squad)[] | null;
+    users?: (string | User)[] | null;
+    sprints?: (string | Sprint)[] | null;
+    complianceStatus?: ('compliant' | 'late' | 'earlyCheckout' | 'overtime' | 'missedCheckout')[] | null;
+  };
+  /**
+   * Calculated metrics for this report (auto-populated)
+   */
+  metrics?: {
+    totalMembers?: number | null;
+    totalAttendanceLogs?: number | null;
+    /**
+     * Decimal value (0.0 - 1.0)
+     */
+    complianceRate?: number | null;
+    averageWorkingHours?: number | null;
+    absenceDays?: number | null;
+    /**
+     * Array of squad performance data
+     */
+    topPerformingSquads?:
+      | {
+          [k: string]: unknown;
+        }
+      | unknown[]
+      | string
+      | number
+      | boolean
+      | null;
+  };
+  automation?: {
+    autoGenerate?: boolean | null;
+    frequency?: ('daily' | 'weekly' | 'sprint' | 'monthly') | null;
+    emailRecipients?:
+      | {
+          email: string;
+          role?: string | null;
+          id?: string | null;
+        }[]
+      | null;
+    nextScheduledRun?: string | null;
+  };
+  exportOptions?: {
+    format?: ('csv' | 'pdf' | 'xlsx' | 'json')[] | null;
+    includeCharts?: boolean | null;
+    includeRawData?: boolean | null;
+  };
+  status: 'draft' | 'generated' | 'sent' | 'archived';
+  /**
+   * Raw data used to generate this report
+   */
+  generatedData?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  createdBy?: (string | null) | User;
   updatedAt: string;
   createdAt: string;
 }
@@ -438,6 +560,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'notifications';
         value: string | Notification;
+      } | null)
+    | ({
+        relationTo: 'reports';
+        value: string | Report;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -542,6 +668,16 @@ export interface SquadsSelect<T extends boolean = true> {
   timeZone?: T;
   workdays?: T;
   activeSprint?: T;
+  attendanceRules?:
+    | T
+    | {
+        minimumWorkHours?: T;
+        standardCheckInTime?: T;
+        standardCheckOutTime?: T;
+        lateThresholdMinutes?: T;
+        earlyCheckoutThresholdMinutes?: T;
+        flexibleHours?: T;
+      };
   complianceScore?: T;
   statusBoard?: T;
   updatedAt?: T;
@@ -556,12 +692,7 @@ export interface SprintsSelect<T extends boolean = true> {
   startDate?: T;
   endDate?: T;
   squad?: T;
-  tags?:
-    | T
-    | {
-        tag?: T;
-        id?: T;
-      };
+  Tags?: T;
   linkedJiraSprintId?: T;
   isActive?: T;
   updatedAt?: T;
@@ -580,6 +711,11 @@ export interface AttendanceLogsSelect<T extends boolean = true> {
   checkOutTime?: T;
   location?: T;
   workMode?: T;
+  totalHours?: T;
+  complianceStatus?: T;
+  complianceNotes?: T;
+  lateMinutes?: T;
+  earlyCheckoutMinutes?: T;
   flags?:
     | T
     | {
@@ -635,6 +771,64 @@ export interface NotificationsSelect<T extends boolean = true> {
   related?: T;
   isRead?: T;
   sentAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "reports_select".
+ */
+export interface ReportsSelect<T extends boolean = true> {
+  title?: T;
+  reportType?: T;
+  dateRange?:
+    | T
+    | {
+        startDate?: T;
+        endDate?: T;
+      };
+  filters?:
+    | T
+    | {
+        squads?: T;
+        users?: T;
+        sprints?: T;
+        complianceStatus?: T;
+      };
+  metrics?:
+    | T
+    | {
+        totalMembers?: T;
+        totalAttendanceLogs?: T;
+        complianceRate?: T;
+        averageWorkingHours?: T;
+        absenceDays?: T;
+        topPerformingSquads?: T;
+      };
+  automation?:
+    | T
+    | {
+        autoGenerate?: T;
+        frequency?: T;
+        emailRecipients?:
+          | T
+          | {
+              email?: T;
+              role?: T;
+              id?: T;
+            };
+        nextScheduledRun?: T;
+      };
+  exportOptions?:
+    | T
+    | {
+        format?: T;
+        includeCharts?: T;
+        includeRawData?: T;
+      };
+  status?: T;
+  generatedData?: T;
+  createdBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }

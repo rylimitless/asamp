@@ -41,6 +41,10 @@ export const Notifications: CollectionConfig = {
           value: 'reminder',
         },
         {
+          label: 'Report',
+          value: 'report',
+        },
+        {
           label: 'System',
           value: 'system',
         },

@@ -31,11 +31,29 @@ async function getTodaysAttendance(payload: Payload, userId: string, user?: Admi
       ],
     },
     limit: 1,
-    // Ensure access control runs as current user
     user,
   })
 
   return attendanceLogs.docs[0] || null
+}
+
+async function getActiveSprint(payload: Payload, squadId: string, user?: AdminUser) {
+  if (!squadId) return null
+
+  try {
+    const sprints = await payload.find({
+      collection: 'sprints',
+      where: {
+        and: [{ squad: { equals: squadId } }, { isActive: { equals: true } }],
+      },
+      limit: 1,
+      user,
+    })
+    return sprints.docs[0] || null
+  } catch (error) {
+    console.error('Error fetching active sprint:', error)
+    return null
+  }
 }
 
 async function handleCheckIn(
@@ -44,62 +62,84 @@ async function handleCheckIn(
   workMode: WorkMode,
   currentUser?: AdminUser,
 ) {
-  const user = await payload.findByID({ collection: 'users', id: userId, user: currentUser })
-  if (!user) return null
+  try {
+    const user = await payload.findByID({ collection: 'users', id: userId, user: currentUser })
+    if (!user) {
+      throw new Error('User not found')
+    }
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const now = new Date()
-
-  const existingLog = await getTodaysAttendance(payload, userId, currentUser)
-
-  const checkInData = {
-    user: userId,
-    // Normalize relationship to ID
-    squad:
+    // Normalize squad ID
+    const squadId =
       (user as any)?.squad && typeof (user as any).squad === 'object'
         ? (user as any).squad.id
-        : (user as any)?.squad,
-    date: today.toISOString(),
-    checkInTime: now.toISOString(),
-    workMode: workMode as AttendanceLog['workMode'],
-    location: 'Web Admin',
-    verified: true,
-  }
+        : (user as any)?.squad
 
-  if (existingLog) {
-    return await payload.update({
-      collection: 'attendanceLogs',
-      id: existingLog.id,
-      data: checkInData,
-      user: currentUser,
-    })
-  } else {
-    return await payload.create({
-      collection: 'attendanceLogs',
-      data: checkInData,
-      user: currentUser,
-    })
+    if (!squadId) {
+      throw new Error('User must be assigned to a squad')
+    }
+
+    // Get active sprint for auto-linking
+    const activeSprint = await getActiveSprint(payload, squadId, currentUser)
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const now = new Date()
+
+    const existingLog = await getTodaysAttendance(payload, userId, currentUser)
+
+    const checkInData = {
+      user: userId,
+      squad: squadId,
+      sprint: activeSprint?.id || null, // Auto-link to active sprint if available
+      date: today.toISOString(),
+      checkInTime: now.toISOString(),
+      workMode: workMode as AttendanceLog['workMode'],
+      location: 'Web Admin',
+      verified: true,
+    }
+
+    if (existingLog) {
+      return await payload.update({
+        collection: 'attendanceLogs',
+        id: existingLog.id,
+        data: checkInData,
+        user: currentUser,
+      })
+    } else {
+      return await payload.create({
+        collection: 'attendanceLogs',
+        data: checkInData,
+        user: currentUser,
+      })
+    }
+  } catch (error) {
+    console.error('Check-in error:', error)
+    throw error
   }
 }
 
 async function handleCheckOut(payload: Payload, userId: string, currentUser?: AdminUser) {
-  const existingLog = await getTodaysAttendance(payload, userId, currentUser)
+  try {
+    const existingLog = await getTodaysAttendance(payload, userId, currentUser)
 
-  if (!existingLog || !existingLog.checkInTime) {
-    return null
+    if (!existingLog || !existingLog.checkInTime) {
+      throw new Error('No check-in found for today')
+    }
+
+    const now = new Date()
+
+    return await payload.update({
+      collection: 'attendanceLogs',
+      id: existingLog.id,
+      data: {
+        checkOutTime: now.toISOString(),
+      },
+      user: currentUser,
+    })
+  } catch (error) {
+    console.error('Check-out error:', error)
+    throw error
   }
-
-  const now = new Date()
-
-  return await payload.update({
-    collection: 'attendanceLogs',
-    id: existingLog.id,
-    data: {
-      checkOutTime: now.toISOString(),
-    },
-    user: currentUser,
-  })
 }
 
 export async function AttendanceButtons({
@@ -111,7 +151,6 @@ export async function AttendanceButtons({
   searchParams: { [key: string]: string | undefined }
   user?: AdminUser
 }) {
-  // Logged-in admin user from Payload Admin server component props
   const currentUserId = user?.id
 
   const action = searchParams.action
@@ -130,19 +169,25 @@ export async function AttendanceButtons({
         await handleCheckIn(payload, currentUserId, workMode, user)
         message = 'Successfully checked in!'
       } catch (error) {
-        message = 'Error checking in'
+        message = `Error checking in: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error('Check-in failed:', error)
       }
     } else if (action === 'checkout') {
       try {
         await handleCheckOut(payload, currentUserId, user)
         message = 'Successfully checked out!'
       } catch (error) {
-        message = 'Error checking out'
+        message = `Error checking out: ${error instanceof Error ? error.message : 'Unknown error'}`
+        console.error('Check-out failed:', error)
       }
     }
 
     // Get current status
-    todaysLog = await getTodaysAttendance(payload, currentUserId, user)
+    try {
+      todaysLog = await getTodaysAttendance(payload, currentUserId, user)
+    } catch (error) {
+      console.error("Error fetching today's log:", error)
+    }
   }
 
   const isCheckedIn = !!(todaysLog && todaysLog.checkInTime && !todaysLog.checkOutTime)
@@ -172,7 +217,7 @@ export async function AttendanceButtons({
           You must be logged in to take attendance.
         </div>
       )}
-      {/* Compact single-row layout */}
+
       <div
         style={{
           display: 'flex',
@@ -280,6 +325,9 @@ export async function AttendanceButtons({
             <span>In: {new Date(todaysLog.checkInTime).toLocaleTimeString()}</span>
             {todaysLog.checkOutTime && (
               <span>Out: {new Date(todaysLog.checkOutTime).toLocaleTimeString()}</span>
+            )}
+            {todaysLog.sprint && (
+              <span style={{ color: 'var(--theme-elevation-600)' }}>Sprint linked</span>
             )}
           </div>
         )}

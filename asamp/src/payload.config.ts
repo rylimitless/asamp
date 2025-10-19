@@ -15,6 +15,7 @@ import { Attendance } from './collections/AttendanceLogs'
 import { LeaveRequests } from './collections/LeaveRequests'
 import { AuditLogs } from './collections/AuditLogs'
 import { Notifications } from './collections/Notifications'
+import { Reports } from './collections/Reports'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -26,7 +27,17 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, Squads, Sprints, Attendance, LeaveRequests, AuditLogs, Notifications],
+  collections: [
+    Users,
+    Media,
+    Squads,
+    Sprints,
+    Attendance,
+    LeaveRequests,
+    AuditLogs,
+    Notifications,
+    Reports,
+  ],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

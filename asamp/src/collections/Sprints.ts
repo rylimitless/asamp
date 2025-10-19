@@ -38,24 +38,33 @@ export const Sprints: CollectionConfig = {
       required: true,
     },
     {
-      name: 'tags',
-      type: 'array',
-      fields: [
+      name: 'Tags', // required
+      type: 'select', // required
+      hasMany: true,
+      admin: {
+        isClearable: true,
+        isSortable: true, // use mouse to drag and drop different values, and sort them according to your choice
+      },
+      options: [
         {
-          name: 'tag',
-          type: 'select',
-          options: [
-            { label: 'Standup', value: 'standup' },
-            { label: 'Retro', value: 'retro' },
-            { label: 'Planning', value: 'planning' },
-            { label: 'Review', value: 'review' },
-            { label: 'Refinement', value: 'refinement' },
-            { label: 'Demo', value: 'demo' },
-          ],
+          label: 'Standup',
+          value: 'standup',
+        },
+        {
+          label: 'Retro',
+          value: 'retro',
+        },
+        {
+          label: 'Sprint Planning',
+          value: 'planning',
+        },
+        {
+          label: 'Demo',
+          value: 'demo',
         },
       ],
-      required: false,
     },
+
     {
       name: 'linkedJiraSprintId',
       type: 'text',
