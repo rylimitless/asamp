@@ -1,19 +1,19 @@
 
 services:
   payload1:
-    image: node:18-alpine
+    build: .
+    restart: unless-stopped
+    working_dir: /home/node/app
     ports:
       - '3010:3000'
     volumes:
-      - .:/home/node/app
-      - node_modules:/home/node/app/node_modules
-    working_dir: /home/node/app/
-    command: sh -c "corepack enable && corepack prepare pnpm@latest --activate && pnpm install && pnpm dev"
-    depends_on:
-      - mongodb
-      # - postgres
+      - media:/home/node/app/media   # persist uploads only
     env_file:
       - .env
+    depends_on:
+      - mongodb
+    networks:
+      - default
 
   # Ensure your DATABASE_URI uses 'mongo' as the hostname ie. mongodb://mongo/my-db-name
   mongodb:
@@ -38,5 +38,7 @@ services:
 
 volumes:
   data:
+  media:
+
   # pgdata:
   node_modules:
