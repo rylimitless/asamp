@@ -4,7 +4,22 @@ export const AuditLogs: CollectionConfig = {
   slug: 'auditLogs',
   admin: {
     useAsTitle: 'action',
-    defaultColumns: ['action', 'performedBy', 'timestamp'],
+    group: 'Analytics',
+    defaultColumns: ['action', 'collection', 'operationType', 'performedBy', 'timestamp'],
+    pagination: {
+      defaultLimit: 50,
+    },
+  },
+  access: {
+    // Audit logs are read-only for most users, only admins can view
+    read: ({ req }) => {
+      if (!req.user) return false
+      return req.user.role === 'admin'
+    },
+    // No one can create/update/delete audit logs directly - only through hooks
+    create: () => false,
+    update: () => false,
+    delete: () => false,
   },
   fields: [
     {
